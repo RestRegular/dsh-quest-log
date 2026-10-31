@@ -1,6 +1,6 @@
 {
   "name": "@restregular/dsh-quest-log",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Quest Log — a cross-session task statistics panel plus a per-session quest board in the right sidebar for DeepSeek Harness: records extra tasks the user interjects while the agent works, exposes agent tools for CRUD, injects ledger changes into the conversation, and continues at turn end while quests stay unfinished. · 任务台账：侧边栏「全部会话任务统计」+ 每个会话右侧边栏的「任务看板」标签页；自动记录用户插话塞进来的额外任务，提供 Agent 工具增删改查，任务变动注入会话，每轮结束检查未完成任务并自动发起新一轮。",
   "icon": "./icon.svg",
   "type": "module",

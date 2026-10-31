@@ -276,6 +276,28 @@ try {
     assert.equal(shouldInjectChange({ ...base, live: false }), false);
   });
 
+  test('客户端样式使用主题语义 token（深色模式回归）', () => {
+    const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+    const start = source.indexOf('const CSS = `');
+    const end = source.indexOf('`;', start);
+    assert.ok(start > 0 && end > start, 'client.js 里应有 CSS 模板串');
+    const css = source.slice(start, end);
+
+    // 主按钮：深色主题 brand-primary 是近白色，白字会直接看不见。
+    assert.match(css, /\.dql-btn-primary\{[^}]*background:var\(--dsw-alias-button-primary-fill/);
+    assert.match(css, /\.dql-btn-primary\{[^}]*color:var\(--dsw-alias-label-primary-foreground\)/);
+    assert.doesNotMatch(css, /\.dql-btn-primary\{[^}]*color:#fff/);
+
+    // hover/选中态：bg-layer-2 在浅色主题下与底同色，交互反馈必须用 interactive token。
+    for (const [, selector, body] of css.matchAll(/([^{}]+):hover[^{}]*\{([^}]*)\}/g)) {
+      assert.ok(!body.includes('bg-layer-2'), `${selector.trim()} :hover 不应使用 bg-layer-2`);
+    }
+    assert.match(css, /\.dql-tab\[aria-selected="true"\]\{[^}]*background:var\(--dsw-alias-interactive-bg-active\)/);
+
+    // 焦点环交给宿主的 :focus-visible 主题规则，不硬编码 brand-primary。
+    assert.doesNotMatch(css, /:focus-visible\{[^}]*outline:2px solid/);
+  });
+
   process.stdout.write(`\n${passed} tests passed\n`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
