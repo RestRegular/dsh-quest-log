@@ -1,0 +1,7 @@
+# dsh-quest-log bundle patch: inserts the Host row. The Client half is resolved
+# from the same package through `dsh.client` in package.json; `name` must be
+# byte-for-byte the package name because the client module graph locates the
+# package by the Loader row name.
+- insert:
+    - id: dsh-quest-log
+      name: '@restregular/dsh-quest-log'

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Quest Log",
+    "description": "A per-session task ledger for extra tasks you interject while the agent works: a sidebar panel and agent tools for add/edit/complete/delete, ledger changes injected into the conversation, and an automatic check at turn end that continues work while quests stay unfinished."
+  }
+}

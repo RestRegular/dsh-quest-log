@@ -1,0 +1,88 @@
+{
+  "name": "@restregular/dsh-quest-log",
+  "version": "0.1.0",
+  "description": "Quest Log — a per-session 任务台账 for DeepSeek Harness: remembers extra tasks the user interjects while the agent works, exposes a sidebar panel and agent tools for CRUD, injects ledger changes into the conversation, and at turn end asks the agent to continue while unfinished quests remain. · 任务台账：记住用户在 Agent 执行任务期间通过「插话发送」塞进来的额外任务，提供侧边栏面板与 Agent 工具增删改查，任务变动时把变动注入会话，并在每轮结束检查未完成任务、自动发起新一轮。",
+  "icon": "./icon.svg",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-llm": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RestRegular/dsh-quest-log.git"
+  },
+  "homepage": "https://github.com/RestRegular/dsh-quest-log#readme",
+  "bugs": {
+    "url": "https://github.com/RestRegular/dsh-quest-log/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "quest-log",
+    "task-ledger",
+    "steering",
+    "todo",
+    "agent-memory"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "license": "MIT",
+  "author": "RestRegular"
+}

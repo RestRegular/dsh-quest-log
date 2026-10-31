@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Quest Log">
+  <defs>
+    <linearGradient id="qlog-bg" x1="24" y1="16" x2="232" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1F3A5F"/>
+      <stop offset="1" stop-color="#0B1220"/>
+    </linearGradient>
+    <linearGradient id="qlog-page" x1="86" y1="48" x2="176" y2="212" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDF7E7"/>
+      <stop offset="1" stop-color="#EEDFBE"/>
+    </linearGradient>
+    <linearGradient id="qlog-accent" x1="86" y1="60" x2="176" y2="190" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#D97706"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="url(#qlog-bg)"/>
+  <circle cx="200" cy="56" r="34" fill="#F59E0B" opacity="0.14"/>
+
+  <!-- parchment page -->
+  <path d="M82 42h92a16 16 0 0 1 16 16v140a16 16 0 0 1-16 16H82a16 16 0 0 1-16-16V58a16 16 0 0 1 16-16Z" fill="url(#qlog-page)"/>
+  <path d="M82 42h92a16 16 0 0 1 16 16v12H66V58a16 16 0 0 1 16-16Z" fill="url(#qlog-accent)"/>
+  <path d="M66 70h124" stroke="#B45309" stroke-opacity="0.55" stroke-width="4"/>
+
+  <!-- quest row 1: done -->
+  <circle cx="100" cy="104" r="12" fill="#0F766E"/>
+  <path d="M94.5 104.2l4.1 4.1 7.4-8.2" fill="none" stroke="#FDF7E7" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="122" y="99" width="54" height="10" rx="5" fill="#9C8964" opacity="0.55"/>
+
+  <!-- quest row 2 -->
+  <circle cx="100" cy="140" r="11" fill="none" stroke="#B45309" stroke-width="3.4"/>
+  <rect x="122" y="135" width="48" height="10" rx="5" fill="#9C8964" opacity="0.55"/>
+
+  <!-- quest row 3 -->
+  <circle cx="100" cy="176" r="11" fill="none" stroke="#B45309" stroke-width="3.4"/>
+  <rect x="122" y="171" width="38" height="10" rx="5" fill="#9C8964" opacity="0.55"/>
+
+  <!-- pen nib -->
+  <path d="M192 150l16-16 14 14-16 16-18 4 4-18Z" fill="#F59E0B"/>
+  <path d="M192 150l14 14" stroke="#B45309" stroke-width="3" stroke-linecap="round"/>
+</svg>
