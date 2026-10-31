@@ -13,13 +13,18 @@
 
 ## 功能
 
-### 侧边栏面板
+### 侧边栏面板：全部会话的任务统计
 
-- 侧边栏「任务台账」图标打开主面板，按**当前会话**展示台账；
-- 新增任务（标题 + 可选说明，Enter 直接提交）；
-- 勾选完成 / 取消完成、编辑标题与说明、删除任务、一键清空已完成；
+- 侧边栏「任务台账」图标打开主面板 = **所有会话的任务统计面板**：汇总未完成 / 已完成 / 有任务的会话数，并按未完成数排出各会话的任务量（工作区、更新时间、未完成/已完成数）；
+- 点任意一行直接跳到对应会话；
+- 每 3 秒轮询宿主，能看到其它会话里由 Agent 工具或插话捕获产生的变化。
+
+### 每个会话右侧边栏的「任务看板」
+
+- 每个会话的右侧边栏会出现一张「任务看板」卡片（`sidebarRightTabs` 扩展页类型 + guide 入口），点它就在右侧边栏新增一个看板标签页，展示**该会话**的任务；
+- 看板里支持：新增任务（标题 + 可选说明，Enter 直接提交）、勾选完成 / 取消完成、编辑标题与说明、删除任务、一键清空已完成；
 - 筛选「全部 / 未完成 / 已完成」，实时显示未完成与已完成数量；
-- 面板每 1.5 秒轮询宿主，Agent 工具或插话捕获造成的变化会自动出现。
+- 看板每 1.5 秒轮询宿主，Agent 工具或插话捕获造成的变化会自动出现。
 
 ### Agent 工具
 
@@ -82,7 +87,7 @@ dsh plugin add @restregular/dsh-quest-log
 | 字段 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `captureSteering` | boolean | `true` | 自动把插话消息记进台账 |
-| `injectChanges` | boolean | `true` | 面板改动时把变动上下文注入运行中的 Agent |
+| `injectChanges` | boolean | `true` | 看板改动时把变动上下文注入运行中的 Agent |
 | `promptLedger` | boolean | `true` | 在系统提示里展示未完成任务 |
 | `autoContinue` | boolean | `true` | 轮末仍有未完成任务时自动续跑 |
 | `maxAutoRounds` | integer | `3` | 同一会话连续自动续跑上限，`0` 关闭 |
@@ -97,7 +102,7 @@ dsh plugin add @restregular/dsh-quest-log
 ## 实现说明
 
 - **宿主半**：`index.js` + `lib/store.js`（会话级存储）、`lib/routes.js`（面板回环 HTTP API）、`lib/tools.js`（Agent 工具）、`lib/render.js`（系统提示/续跑/变动文本）；
-- **客户端半**：`client.js`，注册 `sidebar.panellist` 图标与 `main` 面板，样式只用 `--dsw-alias-*` 主题 token，浅色/深色跟随宿主；
+- **客户端半**：`client.js`，注册 `sidebar.panellist` 图标 + `main` 全部会话统计面板，以及 `sidebarRightTabs` 的「任务看板」页型与 `sidebar.right.pane.tab` 看板本体；样式只用 `--dsw-alias-*` 主题 token，浅色/深色跟随宿主；
 - 面板 API 只接受本机回环连接；Agent 工具通过宿主 `exec.agent.session.header` 定位当前会话，不需要模型传 sessionId。
 
 ## 许可

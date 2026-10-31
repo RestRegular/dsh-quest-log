@@ -1,16 +1,21 @@
 /**
  * dsh-quest-log — Client half.
  *
- * 任务台账面板：侧边栏图标 + 主面板页面。
+ * 两个界面：
  *
- * - 数据全部由宿主 `/dsh-quest-log/api` 回环路由提供，面板只做展示与操作；
- *   同一个 Host 操作同时暴露成 Agent 工具，面板与工具走同一条实现路径。
- * - 当前会话：宿主把「当前主视图会话」记为 `uiWorkspace.sessions.list` 快照里
- *   `retainedBy.mainView > 0` 的那一行；面板轮询该快照 + 台账列表，这样工具、
- *   自动捕获产生的变动也能在面板上看到。
+ * 1. 侧边栏「任务台账」主面板 = **全部会话的任务统计面板**：
+ *    汇总未完成/已完成/有任务的会话数，并按未完成数排出各会话的任务量，
+ *    点一行跳到对应会话。
+ * 2. 每个会话右侧边栏的「任务看板」标签页（`sidebarRightTabs` 注册的扩展页）：
+ *    看板本体（增删改查、筛选、清空已完成）在这里，按右侧边栏所属会话取数。
+ *
+ * 数据全部由宿主回环路由 `/dsh-quest-log/api` 提供：`overview` 供总览，
+ * `list/add/update/remove/clearDone` 供看板；同一套 Host 操作同时暴露成 Agent
+ * 工具，界面与工具走同一条实现路径。
+ *
  * - 整个文件包在 IIFE 里：客户端 bundle 被拼进同一个 classic-script 批次执行，
  *   顶层绑定会与其它插件冲突。
- * - 样式只用 `--dsw-alias-*` / `--dsw-specific-*` 主题 token，浅色/深色主题由宿主继承。
+ * - 样式只用 `--dsw-alias-*` / `--dsw-specific-*` 主题 token，浅色/深色由宿主继承。
  */
 (() => {
   const MODULE_ID = '@restregular/dsh-quest-log';
@@ -33,7 +38,10 @@
       const NS = 'dsh-quest-log';
       const API = '/dsh-quest-log/api';
       const POLL_MS = 1500;
+      const OVERVIEW_POLL_MS = 3000;
       const PANEL_ID = 'quest-log';
+      /** 右侧边栏标签页的类型 kind。 */
+      const TAB_KIND = 'quest-log';
 
       // ------------------------------------------------------------------
       // 文案
@@ -43,7 +51,7 @@
           'panel.title': '任务台账',
           'panel.subtitle': '记住插话里塞进来的额外任务',
           'panel.session': '会话 {id}',
-          'panel.noSession': '未选中会话',
+          'panel.noSession': '当前标签页没有会话上下文',
           'panel.statsOpen': '未完成 {count}',
           'panel.statsDone': '已完成 {count}',
           'panel.addPlaceholder': '记一条任务，例如：等主流程跑完后补上 README 的发布说明',
@@ -54,7 +62,7 @@
           'panel.filterAll': '全部 {count}',
           'panel.filterOpen': '未完成 {count}',
           'panel.filterDone': '已完成 {count}',
-          'panel.emptyNoSession': '先在左侧打开一个会话。任务台账按会话记录，插话任务会自动记进当前会话的台账。',
+          'panel.emptyNoSession': '当前标签页没有会话上下文，无法显示任务看板。',
           'panel.empty': '这个会话还没有任务。用户插话发来的额外任务会自动记在这里，也可以手动添加。',
           'panel.emptyDone': '还没有已完成的任务。',
           'panel.emptyOpen': '太好了，没有未完成任务。',
@@ -69,28 +77,46 @@
           'panel.sourceAgent': 'Agent',
           'panel.sourceUnknown': '任务',
           'panel.footer': '每轮结束若仍有未完成任务，Agent 会自动收到继续提醒；完成时它应该把任务标记为已完成。',
-          'panel.loading': '加载中…',
           'panel.failed': '操作失败：{message}',
           'panel.added': '已添加任务',
           'panel.updated': '已更新任务',
           'panel.removed': '已删除任务',
           'panel.cleared': '已清空 {count} 条已完成任务',
-          'panel.refreshFailed': '刷新失败：{message}',
           'panel.busy': '处理中…',
-          'panel.hintTitle': '给 Agent 用',
           'panel.hintTools': '工具：quest_log_add / quest_log_list / quest_log_update / quest_log_remove',
           'panel.editTitle': '任务内容',
           'panel.editDetail': '任务说明',
-          'panel.sourceLabel': '来源',
           'panel.created': '创建于 {time}',
           'panel.doneAt': '完成于 {time}',
           'panel.counts': '{open} 项未完成 · {done} 项已完成',
+          'board.title': '任务看板',
+          'board.subtitle': '本会话的任务台账',
+          'board.tabTitle': '任务看板',
+          'board.guideTitle': '任务看板',
+          'board.guideDescription': '查看并管理本会话的任务：插话发来的额外任务会自动记录，每轮结束还会检查未完成项。',
+          'overview.title': '任务台账',
+          'overview.subtitle': '全部会话的任务统计',
+          'overview.totalsOpen': '未完成 {count}',
+          'overview.totalsDone': '已完成 {count}',
+          'overview.totalsSessions': '有任务的会话 {count}',
+          'overview.refresh': '刷新',
+          'overview.sessions': '按未完成数排序',
+          'overview.untitled': '未命名会话',
+          'overview.rowMeta': '{where} · 更新于 {time}',
+          'overview.rowCounts': '未完成 {open} · 已完成 {done}',
+          'overview.openHint': '点击打开这个会话',
+          'overview.emptyTitle': '还没有任务',
+          'overview.empty': '任务看板在会话右侧边栏：打开任意会话，点右侧边栏里的「任务看板」卡片即可添加和管理该会话的任务；用户插话发来的任务会自动记录。',
+          'overview.hint': '这里只统计有任务的会话；任务看板在会话右侧边栏打开。',
+          'overview.loading': '加载中…',
+          'overview.failed': '加载失败：{message}',
+          'overview.workspaceUnknown': '未知工作区',
         },
         en: {
           'panel.title': 'Quest Log',
           'panel.subtitle': 'Keep the extra tasks you interject',
           'panel.session': 'Session {id}',
-          'panel.noSession': 'No session selected',
+          'panel.noSession': 'No session in this tab',
           'panel.statsOpen': 'Open {count}',
           'panel.statsDone': 'Done {count}',
           'panel.addPlaceholder': 'Add a task, e.g. update the README after the main flow is done',
@@ -101,7 +127,7 @@
           'panel.filterAll': 'All {count}',
           'panel.filterOpen': 'Open {count}',
           'panel.filterDone': 'Done {count}',
-          'panel.emptyNoSession': 'Open a session first. The quest log is per session, and interjected tasks are recorded automatically.',
+          'panel.emptyNoSession': 'This tab has no session context, so no quest board can be shown.',
           'panel.empty': 'No quests in this session yet. Extra tasks sent while the agent works are recorded here automatically; you can add one manually too.',
           'panel.emptyDone': 'No completed quests yet.',
           'panel.emptyOpen': 'Nice — nothing left to do.',
@@ -116,22 +142,40 @@
           'panel.sourceAgent': 'Agent',
           'panel.sourceUnknown': 'Quest',
           'panel.footer': 'At the end of a turn with unfinished quests the agent is asked to continue; it marks quests done when they are finished.',
-          'panel.loading': 'Loading…',
           'panel.failed': 'Action failed: {message}',
           'panel.added': 'Quest added',
           'panel.updated': 'Quest updated',
           'panel.removed': 'Quest deleted',
           'panel.cleared': 'Cleared {count} completed quests',
-          'panel.refreshFailed': 'Refresh failed: {message}',
           'panel.busy': 'Working…',
-          'panel.hintTitle': 'For the agent',
           'panel.hintTools': 'Tools: quest_log_add / quest_log_list / quest_log_update / quest_log_remove',
           'panel.editTitle': 'Quest text',
           'panel.editDetail': 'Notes',
-          'panel.sourceLabel': 'Source',
           'panel.created': 'Created {time}',
           'panel.doneAt': 'Done {time}',
           'panel.counts': '{open} open · {done} done',
+          'board.title': 'Quest Board',
+          'board.subtitle': 'This session’s quest ledger',
+          'board.tabTitle': 'Quest Board',
+          'board.guideTitle': 'Quest Board',
+          'board.guideDescription': 'View and manage this session’s quests: interjected tasks are recorded automatically and unfinished ones are checked at every turn end.',
+          'overview.title': 'Quest Log',
+          'overview.subtitle': 'Task statistics across all sessions',
+          'overview.totalsOpen': 'Open {count}',
+          'overview.totalsDone': 'Done {count}',
+          'overview.totalsSessions': 'Sessions with quests {count}',
+          'overview.refresh': 'Refresh',
+          'overview.sessions': 'Sorted by open quests',
+          'overview.untitled': 'Untitled session',
+          'overview.rowMeta': '{where} · updated {time}',
+          'overview.rowCounts': '{open} open · {done} done',
+          'overview.openHint': 'Open this session',
+          'overview.emptyTitle': 'No quests yet',
+          'overview.empty': 'The quest board lives in the session’s right sidebar: open a session and click the “Quest Board” card there to add and manage its quests. Interjected tasks are recorded automatically.',
+          'overview.hint': 'Only sessions with quests are listed here; the board opens in the session’s right sidebar.',
+          'overview.loading': 'Loading…',
+          'overview.failed': 'Load failed: {message}',
+          'overview.workspaceUnknown': 'Unknown workspace',
         },
       };
 
@@ -193,7 +237,7 @@
       }
 
       // ------------------------------------------------------------------
-      // 当前会话
+      // 会话元数据（标题 / 工作区）来自客户端 uiWorkspace 快照
       // ------------------------------------------------------------------
       /**
        * 读宿主 uiWorkspace 快照里的会话行。
@@ -206,34 +250,25 @@
           const snapshot = uiWorkspace?.sessions?.list?.getSnapshot?.();
           const byId = snapshot && typeof snapshot.byId === 'object' ? snapshot.byId : undefined;
           if (byId === undefined) return [];
-          return Object.values(byId).filter((row) => row !== null && typeof row === 'object');
+          return Object.entries(byId).map(([id, row]) => ({
+            id: typeof row?.id === 'string' && row.id !== '' ? row.id : id,
+            title: typeof row?.title === 'string' ? row.title : undefined,
+            cwd: typeof row?.cwd === 'string' ? row.cwd : undefined,
+            updatedAt: typeof row?.updatedAt === 'number' ? row.updatedAt : undefined,
+            running: row?.running === true,
+          }));
         } catch {
           return [];
         }
       }
 
-      /**
-       * 当前主视图会话；没有 retainedBy 信息时退回最近活动的一行。
-       * @param ctx - 客户端上下文。
-       * @returns {{sessionId: string, cwd: string}} 会话信息，找不到时 undefined。
-       */
-      function currentSession(ctx) {
-        const rows = sessionRows(ctx);
-        if (rows.length === 0) return undefined;
-        const current = rows.find((row) => {
-          const retained = row.retainedBy;
-          return retained !== null && typeof retained === 'object' && (retained.mainView ?? 0) > 0;
-        });
-        const activityOf = (row) => {
-          const updatedAt = row?.updatedAt;
-          if (typeof updatedAt === 'number' && Number.isFinite(updatedAt)) return updatedAt;
-          const lastActiveAt = row?.lastActiveAt;
-          return typeof lastActiveAt === 'number' && Number.isFinite(lastActiveAt) ? lastActiveAt : 0;
-        };
-        const pick = current !== undefined ? current : rows.slice().sort((a, b) => activityOf(b) - activityOf(a))[0];
-        const sessionId = typeof pick?.id === 'string' && pick.id !== '' ? pick.id : undefined;
-        if (sessionId === undefined) return undefined;
-        return { sessionId, cwd: typeof pick.cwd === 'string' ? pick.cwd : undefined };
+      /** 会话元数据索引：sessionId → 行。 */
+      function sessionMetaMap(ctx) {
+        const map = new Map();
+        for (const row of sessionRows(ctx)) {
+          if (typeof row.id === 'string') map.set(row.id, row);
+        }
+        return map;
       }
 
       function shortSession(sessionId) {
@@ -241,6 +276,12 @@
         const parts = text.split('-');
         const tail = parts[parts.length - 1] || text;
         return tail.slice(0, 8);
+      }
+
+      function workspaceLabel(cwd) {
+        if (typeof cwd !== 'string' || cwd === '') return undefined;
+        const parts = cwd.split(/[\\/]+/u).filter((part) => part !== '');
+        return parts.length === 0 ? undefined : parts[parts.length - 1];
       }
 
       function formatTime(value) {
@@ -254,17 +295,39 @@
         }
       }
 
+      /**
+       * 打开某个会话（总览行点击）。
+       * @param ctx - 客户端上下文。
+       * @param sessionId - 会话 id。
+       * @returns {boolean} 是否已派发。
+       */
+      function openSession(ctx, sessionId) {
+        try {
+          const uiWorkspace = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : undefined;
+          if (uiWorkspace !== undefined && typeof uiWorkspace.openSession === 'function') {
+            uiWorkspace.openSession(sessionId);
+            return true;
+          }
+        } catch (error) {
+          console.warn('[dsh-quest-log] openSession failed:', error?.message ?? error);
+        }
+        return false;
+      }
+
       // ------------------------------------------------------------------
       // 样式
       // ------------------------------------------------------------------
       const CSS = `
 .dql-root{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
 .dql-head{flex:none;padding:18px 22px 0}
+.dql-pane .dql-head{padding:14px 14px 0}
 .dql-title-row{display:flex;align-items:flex-start;gap:12px}
 .dql-title{font-size:16px;font-weight:650;margin:0;letter-spacing:.01em}
+.dql-pane .dql-title{font-size:14px}
 .dql-sub{color:var(--dsw-alias-label-secondary);font-size:12px;margin:3px 0 0}
 .dql-session{margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:11px;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
 .dql-stats{display:flex;gap:8px;align-items:center;margin:12px 0 0;flex-wrap:wrap}
+.dql-pane .dql-stats{margin:10px 0 0}
 .dql-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:11px;line-height:18px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1)}
 .dql-chip-open{border-color:color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, transparent);color:var(--dsw-alias-state-warn-primary)}
 .dql-chip-done{border-color:var(--dsw-alias-border-l1);color:var(--dsw-alias-state-success-primary)}
@@ -279,6 +342,7 @@
 .dql-btn-ghost:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}
 .dql-btn-danger:hover{color:var(--dsw-alias-state-error-primary)}
 .dql-form{margin:14px 22px 0;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.dql-pane .dql-form{margin:12px 14px 0}
 .dql-textarea,.dql-input{width:100%;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:1.6;padding:7px 9px;resize:vertical;outline:none}
 .dql-textarea{min-height:44px;max-height:180px}
 .dql-textarea:focus,.dql-input:focus{border-color:var(--dsw-alias-brand-primary)}
@@ -286,13 +350,16 @@
 .dql-form-actions .dql-grow{flex:1}
 .dql-form-hint{color:var(--dsw-alias-label-secondary);font-size:11px}
 .dql-tabs{flex:none;display:flex;gap:6px;padding:14px 22px 0;flex-wrap:wrap}
+.dql-pane .dql-tabs{padding:12px 14px 0}
 .dql-tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer;font-family:inherit}
 .dql-tab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1)}
 .dql-tab[aria-selected="true"]{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);font-weight:600}
 .dql-banner{margin:12px 22px 0;border-radius:8px;padding:7px 10px;font-size:12px;display:flex;gap:8px;align-items:center;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1)}
+.dql-pane .dql-banner{margin:10px 14px 0}
 .dql-banner-error{color:var(--dsw-alias-state-error-primary)}
 .dql-banner-error .dql-banner-close{margin-left:auto;cursor:pointer;background:none;border:0;color:inherit;font-size:14px;line-height:1;padding:2px 4px}
 .dql-list{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:12px 22px 20px;display:flex;flex-direction:column;gap:8px}
+.dql-pane .dql-list{padding:10px 14px 16px}
 .dql-empty{margin:auto;max-width:420px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:12.5px;line-height:1.8;padding:28px 12px}
 .dql-empty-title{font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary);margin:0 0 6px}
 .dql-row{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;transition:border-color .12s ease,background .12s ease}
@@ -316,9 +383,26 @@
 .dql-mini-danger:hover{color:var(--dsw-alias-state-error-primary)}
 .dql-editor{display:flex;flex-direction:column;gap:6px;width:100%}
 .dql-foot{flex:none;padding:8px 22px 12px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px;display:flex;flex-direction:column;gap:3px}
+.dql-pane .dql-foot{padding:8px 14px 10px}
 .dql-foot-tools{font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:10.5px;color:var(--dsw-alias-label-secondary);opacity:.9;word-break:break-all}
-.dql-hint{color:var(--dsw-alias-label-secondary);font-size:12px;padding:28px 22px}
 .dql-loading{color:var(--dsw-alias-label-secondary);font-size:12px;padding:14px 0}
+.dql-ov{display:flex;flex-direction:column;height:100%;min-height:0;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
+.dql-ov-head{flex:none;padding:18px 22px 0}
+.dql-ov-title{font-size:16px;font-weight:650;margin:0;letter-spacing:.01em}
+.dql-ov-sub{color:var(--dsw-alias-label-secondary);font-size:12px;margin:3px 0 0}
+.dql-ov-totals{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
+.dql-ov-totals .dql-head-actions{margin-left:auto}
+.dql-ov-section{flex:none;display:flex;align-items:center;gap:8px;padding:16px 22px 0;color:var(--dsw-alias-label-secondary);font-size:11px;letter-spacing:.02em}
+.dql-ov-list{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:10px 22px 18px;display:flex;flex-direction:column;gap:8px}
+.dql-ov-row{display:flex;align-items:center;gap:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;cursor:pointer;transition:border-color .12s ease,background .12s ease;text-align:left;font-family:inherit;color:inherit;width:100%}
+.dql-ov-row:hover{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2)}
+.dql-ov-row:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dql-ov-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dql-ov-name{font-size:13px;font-weight:600;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dql-ov-meta{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dql-ov-counts{flex:none;display:flex;gap:6px;align-items:center}
+.dql-ov-empty{margin:auto;max-width:440px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:12.5px;line-height:1.8;padding:28px 12px}
+.dql-ov-foot{flex:none;padding:8px 22px 12px;border-top:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:11px}
 `;
 
       /** 注入一次样式表，卸载时移除。 */
@@ -359,12 +443,16 @@
       }
 
       // ------------------------------------------------------------------
-      // 页面
+      // 会话任务看板（右侧边栏标签页）
       // ------------------------------------------------------------------
       const FILTERS = ['all', 'open', 'done'];
 
-      function QuestLogPage({ ctx }) {
-        const [session, setSession] = useState(undefined);
+      /**
+       * 一个会话的任务看板。
+       * @param props - { ctx, sessionId, pane }。
+       * @returns 看板元素。
+       */
+      function QuestBoard({ ctx, sessionId, pane = false }) {
         const [quests, setQuests] = useState([]);
         const [stats, setStats] = useState({ open: 0, done: 0 });
         const [loaded, setLoaded] = useState(false);
@@ -376,9 +464,9 @@
         const [busy, setBusy] = useState(false);
         const [error, setError] = useState(undefined);
         const [notice, setNotice] = useState(undefined);
-        const sessionIdRef = useRef(undefined);
         const noticeTimer = useRef(undefined);
         const t = translateCurrent;
+        const sid = typeof sessionId === 'string' && sessionId !== '' ? sessionId : undefined;
 
         const flash = useCallback((message) => {
           setNotice(message);
@@ -390,48 +478,47 @@
           if (noticeTimer.current !== undefined) clearTimeout(noticeTimer.current);
         }, []);
 
-        const applyList = useCallback((data) => {
-          setQuests(Array.isArray(data.quests) ? data.quests : []);
-          setStats(data.stats !== null && typeof data.stats === 'object'
-            ? { open: Number(data.stats.open) || 0, done: Number(data.stats.done) || 0 }
-            : { open: 0, done: 0 });
+        const clearView = useCallback(() => {
+          setQuests([]);
+          setStats({ open: 0, done: 0 });
           setLoaded(true);
         }, []);
 
-        const refresh = useCallback(async (current) => {
-          if (current === undefined || current.sessionId === undefined) {
-            setSession(undefined);
-            setQuests([]);
-            setStats({ open: 0, done: 0 });
-            setLoaded(true);
-            sessionIdRef.current = undefined;
+        const refresh = useCallback(async () => {
+          if (sid === undefined) {
+            clearView();
             return;
           }
-          sessionIdRef.current = current.sessionId;
-          setSession(current);
           try {
-            const data = await apiGet('list', { sessionId: current.sessionId });
-            applyList(data);
+            const data = await apiGet('list', { sessionId: sid });
+            setQuests(Array.isArray(data.quests) ? data.quests : []);
+            setStats(data.stats !== null && typeof data.stats === 'object'
+              ? { open: Number(data.stats.open) || 0, done: Number(data.stats.done) || 0 }
+              : { open: 0, done: 0 });
+            setLoaded(true);
             setError(undefined);
           } catch (err) {
             setError(String(err?.message ?? err));
           }
-        }, [applyList]);
+        }, [sid, clearView]);
 
         useEffect(() => {
           let alive = true;
           const tick = async () => {
             if (!alive) return;
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-            await refresh(currentSession(ctx));
+            await refresh();
           };
+          setLoaded(false);
+          setFilter('all');
+          setEditing(null);
           tick();
           const timer = setInterval(tick, POLL_MS);
           return () => {
             alive = false;
             clearInterval(timer);
           };
-        }, [ctx, refresh]);
+        }, [refresh]);
 
         const run = useCallback(async (operation, successText) => {
           setBusy(true);
@@ -439,7 +526,7 @@
             const result = await operation();
             if (successText !== undefined) flash(successText(result));
             setError(undefined);
-            await refresh(currentSession(ctx));
+            await refresh();
             return result;
           } catch (err) {
             setError(String(err?.message ?? err));
@@ -447,62 +534,60 @@
           } finally {
             setBusy(false);
           }
-        }, [ctx, flash, refresh]);
-
-        const sessionId = session?.sessionId;
+        }, [flash, refresh]);
 
         const addQuest = useCallback(async () => {
           const title = draft.trim();
-          if (title === '' || sessionId === undefined) return;
+          if (title === '' || sid === undefined) return;
           const detail = draftDetail.trim();
           await run(
-            () => apiPost({ op: 'add', sessionId, title, ...(detail === '' ? {} : { detail }) }),
+            () => apiPost({ op: 'add', sessionId: sid, title, ...(detail === '' ? {} : { detail }) }),
             () => t('panel.added'),
           );
           setDraft('');
           setDraftDetail('');
           setShowDetail(false);
-        }, [draft, draftDetail, sessionId, run, t]);
+        }, [draft, draftDetail, sid, run, t]);
 
         const toggleQuest = useCallback(async (quest) => {
-          if (sessionId === undefined) return;
+          if (sid === undefined) return;
           const nextStatus = quest.status === 'done' ? 'open' : 'done';
           await run(
-            () => apiPost({ op: 'update', sessionId, id: quest.id, status: nextStatus }),
+            () => apiPost({ op: 'update', sessionId: sid, id: quest.id, status: nextStatus }),
             () => t('panel.updated'),
           );
-        }, [sessionId, run, t]);
+        }, [sid, run, t]);
 
         const saveEditing = useCallback(async () => {
-          if (editing === null || sessionId === undefined) return;
+          if (editing === null || sid === undefined) return;
           const title = String(editing.title ?? '').trim();
           if (title === '') return;
           await run(
-            () => apiPost({ op: 'update', sessionId, id: editing.id, title, detail: String(editing.detail ?? '') }),
+            () => apiPost({ op: 'update', sessionId: sid, id: editing.id, title, detail: String(editing.detail ?? '') }),
             () => t('panel.updated'),
           );
           setEditing(null);
-        }, [editing, sessionId, run, t]);
+        }, [editing, sid, run, t]);
 
         const removeQuest = useCallback(async (quest) => {
-          if (sessionId === undefined) return;
+          if (sid === undefined) return;
           await run(
-            () => apiPost({ op: 'remove', sessionId, id: quest.id }),
+            () => apiPost({ op: 'remove', sessionId: sid, id: quest.id }),
             () => t('panel.removed'),
           );
-        }, [sessionId, run, t]);
+        }, [sid, run, t]);
 
         const clearDone = useCallback(async () => {
-          if (sessionId === undefined || stats.done === 0) return;
+          if (sid === undefined || stats.done === 0) return;
           const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
             ? window.confirm(t('panel.clearDoneConfirm', { count: stats.done }))
             : true;
           if (!confirmed) return;
           await run(
-            () => apiPost({ op: 'clearDone', sessionId }),
+            () => apiPost({ op: 'clearDone', sessionId: sid }),
             (result) => t('panel.cleared', { count: Number(result?.removed) || 0 }),
           );
-        }, [sessionId, stats.done, run, t]);
+        }, [sid, stats.done, run, t]);
 
         const visible = useMemo(() => {
           const rows = Array.isArray(quests) ? quests : [];
@@ -589,25 +674,25 @@
           return stats.open + stats.done;
         };
 
-        const canAdd = sessionId !== undefined && draft.trim() !== '' && !busy;
+        const canAdd = sid !== undefined && draft.trim() !== '' && !busy;
 
-        return h('div', { className: 'dql-root' },
+        return h('div', { className: `dql-root${pane ? ' dql-pane' : ''}` },
           h('div', { className: 'dql-head' },
             h('div', { className: 'dql-title-row' },
               h('div', null,
-                h('h2', { className: 'dql-title' }, t('panel.title')),
-                h('p', { className: 'dql-sub' }, t('panel.subtitle')),
+                h('h2', { className: 'dql-title' }, t('board.title')),
+                h('p', { className: 'dql-sub' }, t('board.subtitle')),
               ),
-              h('div', { className: 'dql-session', title: sessionId || '' },
-                sessionId !== undefined ? t('panel.session', { id: shortSession(sessionId) }) : t('panel.noSession')),
+              h('div', { className: 'dql-session', title: sid || '' },
+                sid !== undefined ? t('panel.session', { id: shortSession(sid) }) : t('panel.noSession')),
             ),
             h('div', { className: 'dql-stats' },
               h('span', { className: 'dql-chip dql-chip-open' }, t('panel.statsOpen', { count: stats.open })),
               h('span', { className: 'dql-chip dql-chip-done' }, t('panel.statsDone', { count: stats.done })),
               h('div', { className: 'dql-head-actions' },
                 h('button', {
-                  type: 'button', className: 'dql-btn dql-btn-ghost', disabled: busy || sessionId === undefined,
-                  onClick: () => run(() => apiGet('list', { sessionId }), () => undefined).then(() => undefined),
+                  type: 'button', className: 'dql-btn dql-btn-ghost', disabled: busy || sid === undefined,
+                  onClick: () => { void refresh(); },
                 }, t('panel.refresh')),
                 h('button', {
                   type: 'button', className: 'dql-btn dql-btn-ghost dql-btn-danger',
@@ -618,7 +703,7 @@
             ),
           ),
 
-          sessionId === undefined ? null : h('div', { className: 'dql-form' },
+          sid === undefined ? null : h('div', { className: 'dql-form' },
             h('textarea', {
               className: 'dql-textarea',
               value: draft,
@@ -628,7 +713,7 @@
               onKeyDown: (event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
-                  if (canAdd) addQuest();
+                  if (canAdd) void addQuest();
                 }
               },
             }),
@@ -641,7 +726,8 @@
             }) : null,
             h('div', { className: 'dql-form-actions' },
               h('button', {
-                type: 'button', className: 'dql-btn dql-btn-primary', disabled: !canAdd, onClick: addQuest,
+                type: 'button', className: 'dql-btn dql-btn-primary', disabled: !canAdd,
+                onClick: () => void addQuest(),
               }, t('panel.add')),
               h('button', {
                 type: 'button', className: 'dql-btn dql-btn-ghost',
@@ -677,13 +763,11 @@
           notice !== undefined ? h('div', { className: 'dql-banner' }, h('span', null, notice)) : null,
 
           h('div', { className: 'dql-list' },
-            sessionId === undefined
-              ? h('div', { className: 'dql-empty' },
-                h('p', { className: 'dql-empty-title' }, t('panel.title')),
-                h('p', null, t('panel.emptyNoSession')))
+            sid === undefined
+              ? h('div', { className: 'dql-empty' }, h('p', null, t('panel.emptyNoSession')))
               : loaded && visible.length === 0
                 ? h('div', { className: 'dql-empty' },
-                  h('p', { className: 'dql-empty-title' }, quests.length === 0 ? t('panel.title') : t('panel.emptyOpen')),
+                  h('p', { className: 'dql-empty-title' }, quests.length === 0 ? t('board.title') : t('panel.emptyOpen')),
                   h('p', null, quests.length === 0
                     ? t('panel.empty')
                     : filter === 'done' ? t('panel.emptyDone') : t('panel.emptyOpen')))
@@ -694,6 +778,146 @@
             h('span', null, t('panel.footer')),
             h('span', { className: 'dql-foot-tools' }, t('panel.hintTools')),
           ),
+        );
+      }
+
+      /** 右侧边栏标签页里的看板（会话上下文由 slot props 提供）。 */
+      function QuestBoardTab({ ctx, sessionId }) {
+        return h(QuestBoard, { ctx, sessionId, pane: true });
+      }
+
+      /** 右侧边栏标签页的标题。 */
+      function QuestBoardTabTitle(props) {
+        const t = typeof props?.t === 'function' ? props.t : translateCurrent;
+        return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px', minWidth: 0 } },
+          h(QuestLogIcon, { size: 15 }),
+          h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t('board.tabTitle')),
+        );
+      }
+
+      // ------------------------------------------------------------------
+      // 侧边栏主面板：全部会话的任务统计
+      // ------------------------------------------------------------------
+      function QuestOverviewPage({ ctx }) {
+        const [overview, setOverview] = useState({
+          totals: { open: 0, done: 0, total: 0, sessions: 0 },
+          sessions: [],
+        });
+        const [meta, setMeta] = useState(() => sessionMetaMap(ctx));
+        const [loaded, setLoaded] = useState(false);
+        const [error, setError] = useState(undefined);
+        const t = translateCurrent;
+
+        const refresh = useCallback(async () => {
+          try {
+            const data = await apiGet('overview');
+            setOverview({
+              totals: data.totals !== null && typeof data.totals === 'object'
+                ? {
+                  open: Number(data.totals.open) || 0,
+                  done: Number(data.totals.done) || 0,
+                  total: Number(data.totals.total) || 0,
+                  sessions: Number(data.totals.sessions) || 0,
+                }
+                : { open: 0, done: 0, total: 0, sessions: 0 },
+              sessions: Array.isArray(data.sessions) ? data.sessions : [],
+            });
+            setMeta(sessionMetaMap(ctx));
+            setError(undefined);
+          } catch (err) {
+            setError(String(err?.message ?? err));
+          } finally {
+            setLoaded(true);
+          }
+        }, [ctx]);
+
+        useEffect(() => {
+          let alive = true;
+          const tick = async () => {
+            if (!alive) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            await refresh();
+          };
+          tick();
+          const timer = setInterval(tick, OVERVIEW_POLL_MS);
+          return () => {
+            alive = false;
+            clearInterval(timer);
+          };
+        }, [refresh]);
+
+        const totals = overview.totals;
+        const rows = overview.sessions;
+
+        const titleOf = (sessionId) => {
+          const row = meta.get(sessionId);
+          const title = typeof row?.title === 'string' ? row.title.trim() : '';
+          return title !== '' ? title : t('overview.untitled');
+        };
+
+        const whereOf = (sessionId) => {
+          const row = meta.get(sessionId);
+          const label = workspaceLabel(row?.cwd);
+          return label !== undefined ? label : t('overview.workspaceUnknown');
+        };
+
+        return h('div', { className: 'dql-ov' },
+          h('div', { className: 'dql-ov-head' },
+            h('div', null,
+              h('h2', { className: 'dql-ov-title' }, t('overview.title')),
+              h('p', { className: 'dql-ov-sub' }, t('overview.subtitle')),
+            ),
+            h('div', { className: 'dql-ov-totals' },
+              h('span', { className: 'dql-chip dql-chip-open' }, t('overview.totalsOpen', { count: totals.open })),
+              h('span', { className: 'dql-chip dql-chip-done' }, t('overview.totalsDone', { count: totals.done })),
+              h('span', { className: 'dql-chip' }, t('overview.totalsSessions', { count: totals.sessions })),
+              h('div', { className: 'dql-head-actions' },
+                h('button', {
+                  type: 'button', className: 'dql-btn dql-btn-ghost',
+                  onClick: () => { void refresh(); },
+                }, t('overview.refresh')),
+              ),
+            ),
+          ),
+
+          error !== undefined ? h('div', { className: 'dql-banner dql-banner-error' },
+            h('span', null, t('overview.failed', { message: error })),
+            h('button', {
+              type: 'button', className: 'dql-banner-close', 'aria-label': 'dismiss',
+              onClick: () => setError(undefined),
+            }, '×'),
+          ) : null,
+
+          h('div', { className: 'dql-ov-section' }, h('span', null, t('overview.sessions'))),
+
+          h('div', { className: 'dql-ov-list' },
+            !loaded
+              ? h('div', { className: 'dql-loading' }, t('overview.loading'))
+              : rows.length === 0
+                ? h('div', { className: 'dql-ov-empty' },
+                  h('p', { className: 'dql-empty-title' }, t('overview.emptyTitle')),
+                  h('p', null, t('overview.empty')))
+                : rows.map((row) => h('button', {
+                  key: row.sessionId,
+                  type: 'button',
+                  className: 'dql-ov-row',
+                  title: t('overview.openHint'),
+                  onClick: () => { openSession(ctx, row.sessionId); },
+                },
+                h('div', { className: 'dql-ov-main' },
+                  h('div', { className: 'dql-ov-name' }, titleOf(row.sessionId)),
+                  h('div', { className: 'dql-ov-meta' }, t('overview.rowMeta', {
+                    where: whereOf(row.sessionId),
+                    time: formatTime(row.updatedAt) || '—',
+                  })),
+                ),
+                h('div', { className: 'dql-ov-counts' },
+                  h('span', { className: 'dql-chip dql-chip-open' }, t('overview.rowCounts', { open: row.open, done: row.done })),
+                ),
+                )),
+          ),
+
+          h('div', { className: 'dql-ov-foot' }, t('overview.hint')),
         );
       }
 
@@ -724,17 +948,65 @@
         register('sidebar.panellist', {
           id: PANEL_ID,
           order: 42,
-          label: () => translateCurrent('panel.title'),
+          label: () => translateCurrent('overview.title'),
         }, (props) => h(QuestLogIcon, { size: props?.size ?? 16 }), 'dsh-quest-log: sidebar entry');
 
-        register('main', { key: PANEL_ID }, (props) => h(QuestLogPage, { ctx, ...props }), 'dsh-quest-log: main page');
+        register('main', { key: PANEL_ID }, (props) => h(QuestOverviewPage, { ctx, ...props }), 'dsh-quest-log: overview page');
+
+        // 右侧边栏标签页：类型 + 看板本体 + 标题。sidebarRightTabs 可能晚于
+        // 本插件 provide，所以用 ctx.inject 等它就绪后再注册。
+        ctx.inject(['sidebarRightTabs'], (scope) => {
+          const tabs = scope.get('sidebarRightTabs');
+          if (tabs === undefined || typeof tabs.register !== 'function') {
+            console.warn('[dsh-quest-log] sidebarRightTabs service missing; quest board tab not registered');
+            return;
+          }
+          scope.effect(() => tabs.register({
+            id: MODULE_ID,
+            kind: TAB_KIND,
+            priority: 'extension',
+            title: () => translateCurrent('board.tabTitle'),
+            guide: [
+              {
+                id: 'open',
+                order: 45,
+                title: () => translateCurrent('board.guideTitle'),
+                description: () => translateCurrent('board.guideDescription'),
+              },
+            ],
+          }), 'dsh-quest-log: right sidebar tab type');
+        });
+
+        register(
+          'sidebar.right.pane.tab',
+          { key: MODULE_ID, locale: NS },
+          (props) => h(QuestBoardTab, { ctx, sessionId: props?.sessionId }),
+          'dsh-quest-log: quest board tab body',
+        );
+        register(
+          'sidebar.right.pane.tab.title',
+          { key: MODULE_ID, locale: NS },
+          QuestBoardTabTitle,
+          'dsh-quest-log: quest board tab title',
+        );
       }
 
       return {
         inject: ['slots', 'locale'],
         apply,
         // 仅用于冒烟测试；宿主不会读取。
-        __test: { DICT, QuestLogPage, QuestLogIcon, currentSession, shortSession, formatTime, fallbackTranslate },
+        __test: {
+          DICT,
+          QuestBoard,
+          QuestOverviewPage,
+          QuestBoardTab,
+          QuestBoardTabTitle,
+          QuestLogIcon,
+          shortSession,
+          workspaceLabel,
+          formatTime,
+          fallbackTranslate,
+        },
       };
     },
   });

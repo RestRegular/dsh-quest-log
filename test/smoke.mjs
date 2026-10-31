@@ -207,6 +207,47 @@ try {
     assert.ok(added[0].detail.includes('changelog'));
   });
 
+  test('overview 汇总所有会话并排除空台账', () => {
+    const overviewDir = join(dir, 'overview');
+    const overviewStore = new QuestStore({ dir: overviewDir, now: () => 7000 });
+    const sessionA = 'session-overview-a';
+    const sessionB = 'session-overview-b';
+    const sessionC = 'session-overview-c';
+    overviewStore.add(sessionA, { title: 'A1' });
+    overviewStore.add(sessionA, { title: 'A2' });
+    const b = overviewStore.add(sessionB, { title: 'B1' }).quest;
+    overviewStore.update(sessionB, b.id, { status: 'done' }, 'user');
+    const c = overviewStore.add(sessionC, { title: 'C1' }).quest;
+    overviewStore.remove(sessionC, c.id);
+    // 直接把 A1 标完成，制造 1 未完成 + 1 完成
+    const a1 = overviewStore.get(sessionA, overviewStore.list(sessionA)[0].id);
+    overviewStore.update(sessionA, a1.id, { status: 'done' }, 'user');
+
+    const overview = overviewStore.overview();
+    assert.equal(overview.totals.sessions, 2);
+    assert.equal(overview.totals.open, 1);
+    assert.equal(overview.totals.done, 2);
+    const rows = overview.sessions.map((row) => row.sessionId);
+    assert.ok(rows.includes(sessionA));
+    assert.ok(rows.includes(sessionB));
+    assert.ok(!rows.includes(sessionC));
+    // 未完成多的会话排前面：A 有 1 项未完成，B 没有
+    assert.equal(overview.sessions[0].sessionId, sessionA);
+
+    const apiOps = createOperations(overviewStore);
+    const apiOverview = apiOps.overview({});
+    assert.equal(apiOverview.ok, true);
+    assert.equal(apiOverview.totals.sessions, 2);
+    assert.equal(apiOverview.sessions.length, 2);
+  });
+
+  test('overview 在台账目录不存在时返回空', () => {
+    const emptyStore = new QuestStore({ dir: join(dir, 'overview-empty'), now: () => 8000 });
+    const overview = emptyStore.overview();
+    assert.deepEqual(overview.totals, { open: 0, done: 0, total: 0, sessions: 0 });
+    assert.deepEqual(overview.sessions, []);
+  });
+
   test('shouldAutoContinue 护栏', () => {
     const base = {
       enabled: true, stopping: false, live: true, status: 'idle', failed: false,
